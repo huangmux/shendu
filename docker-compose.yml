@@ -16,6 +16,7 @@ services:
       # Persist uploaded files
       - shendu_uploads:/app/uploads
     restart: unless-stopped
+    user: "0:0"
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"]
       interval: 30s
@@ -25,7 +26,7 @@ services:
     init: true
     command: >
       sh -c "
-        echo 'Starting Deep Read application...' &&
+        echo 'Starting Deep Read application...' && mkdir -p /app/data /app/uploads &&
         npx prisma migrate deploy &&
         echo 'Database migration completed' &&
         node server.js

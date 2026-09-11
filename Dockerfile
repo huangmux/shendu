@@ -1,5 +1,5 @@
 # Use Node.js 20 Alpine for smaller image size
-FROM node:20-alpine AS base
+FROM node:22-alpine AS base
 
 # Install dependencies only when needed
 FROM base AS deps
@@ -45,8 +45,8 @@ COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/src/generated ./src/generated
 
 # Create uploads directory
-RUN mkdir -p uploads
-RUN chown -R nextjs:nodejs uploads
+RUN mkdir -p uploads data
+RUN chown -R nextjs:nodejs uploads data
 RUN chown -R nextjs:nodejs .next
 
 # Switch to non-root user
