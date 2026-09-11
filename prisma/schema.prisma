@@ -12,29 +12,43 @@ datasource db {
 }
 
 model Document {
-  id          String       @id @default(cuid())
+  id          String    @id @default(cuid())
   title       String
   filePath    String
   pageCount   Int
-  intent      String       // academic, work, interest
-  parseStatus String       @default("pending") // pending, ok, poor, failed
+  intent      String // academic, work, interest
+  parseStatus String    @default("pending") // pending, ok, poor, failed
   clientId    String
-  createdAt   DateTime     @default(now())
+  createdAt   DateTime  @default(now())
   chapters    Chapter[]
 
   @@map("documents")
 }
 
 model Chapter {
-  id         String   @id @default(cuid())
+  id         String    @id @default(cuid())
   documentId String
   index      Int
   title      String
   pageStart  Int
   pageEnd    Int
   text       String?
-  source     String   @default("auto") // auto, manual
-  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  source     String    @default("auto") // auto, manual, llm
+  summary    String?
+  keyPoints  String?
+  questions  String?
+  insightAt  DateTime?
+  document   Document  @relation(fields: [documentId], references: [id], onDelete: Cascade)
 
   @@map("chapters")
+}
+
+model AppSetting {
+  id         String   @id
+  llmApiKey  String   @default("")
+  llmBaseUrl String   @default("https://api.deepseek.com/v1")
+  llmModel   String   @default("deepseek-chat")
+  updatedAt  DateTime @updatedAt
+
+  @@map("app_settings")
 }

@@ -6,10 +6,20 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ArrowLeft, BookOpen, Edit3, CheckCircle, AlertCircle, XCircle } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { ArrowLeft, BookOpen, Edit3, CheckCircle, AlertCircle, XCircle, Sparkles } from "lucide-react";
 import { MENTORS, type MentorId } from "@/lib/mentors";
 import { StudyChat } from "@/components/study-chat";
+import { AppHeader } from "@/components/app-header";
+import { LlmBanner } from "@/components/llm-banner";
+import { ChapterInsight } from "@/components/chapter-insight";
 
 interface Chapter {
   id: string;
@@ -19,6 +29,9 @@ interface Chapter {
   pageEnd: number;
   text?: string | null;
   source: string;
+  summary?: string | null;
+  keyPoints?: string[];
+  questions?: string[];
 }
 
 interface Document {
@@ -33,15 +46,15 @@ interface Document {
 
 const INTENT_LABELS = {
   academic: "教材",
-  work: "工作材料", 
-  interest: "兴趣读物"
+  work: "工作材料",
+  interest: "兴趣读物",
 };
 
 const PARSE_STATUS_CONFIG = {
   pending: { label: "解析中", color: "bg-yellow-100 text-yellow-800", icon: AlertCircle },
   ok: { label: "解析完成", color: "bg-green-100 text-green-800", icon: CheckCircle },
   poor: { label: "解析质量较低", color: "bg-orange-100 text-orange-800", icon: AlertCircle },
-  failed: { label: "解析失败", color: "bg-red-100 text-red-800", icon: XCircle }
+  failed: { label: "解析失败", color: "bg-red-100 text-red-800", icon: XCircle },
 };
 
 export default function DocumentPage() {
@@ -56,12 +69,44 @@ export default function DocumentPage() {
   const [editingChapter, setEditingChapter] = useState<Chapter | null>(null);
   const [editForm, setEditForm] = useState({ title: "", pageStart: "", pageEnd: "" });
   const [activeMentor, setActiveMentor] = useState<MentorId | "">("");
+  const [llmConfigured, setLlmConfigured] = useState<boolean | null>(null);
+  const [reparsing, setReparsing] = useState(false);
 
   useEffect(() => {
-    fetchDocument();
+    let cancelled = false;
+    fetch(`/api/documents/${documentId}`)
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error("文档不存在或已被删除");
+        }
+        return response.json();
+      })
+      .then((doc: Document) => {
+        if (cancelled) return;
+        setDocument(doc);
+        setSelectedChapter((prev) => prev || doc.chapters?.[0]?.id || "");
+        setError("");
+        setLoading(false);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : "加载失败");
+        setLoading(false);
+      });
+    fetch("/api/health")
+      .then((response) => response.json())
+      .then((data) => {
+        if (!cancelled) setLlmConfigured(Boolean(data.llm?.configured));
+      })
+      .catch(() => {
+        if (!cancelled) setLlmConfigured(null);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [documentId]);
 
-  const fetchDocument = async () => {
+  const refreshDocument = async () => {
     try {
       setLoading(true);
       const response = await fetch(`/api/documents/${documentId}`);
@@ -83,7 +128,7 @@ export default function DocumentPage() {
     setEditForm({
       title: chapter.title,
       pageStart: chapter.pageStart.toString(),
-      pageEnd: chapter.pageEnd.toString()
+      pageEnd: chapter.pageEnd.toString(),
     });
   };
 
@@ -97,18 +142,35 @@ export default function DocumentPage() {
         body: JSON.stringify({
           title: editForm.title,
           pageStart: parseInt(editForm.pageStart),
-          pageEnd: parseInt(editForm.pageEnd)
-        })
+          pageEnd: parseInt(editForm.pageEnd),
+        }),
       });
 
       if (!response.ok) {
         throw new Error("更新失败");
       }
 
-      await fetchDocument(); // Refresh document data
+      await refreshDocument();
       setEditingChapter(null);
-    } catch (err) {
+    } catch {
       alert("更新失败，请重试");
+    }
+  };
+
+  const handleReparse = async () => {
+    setReparsing(true);
+    try {
+      const response = await fetch(`/api/documents/${documentId}/reparse`, { method: "POST" });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || "智能划分失败");
+      }
+      setDocument(data);
+      setSelectedChapter(data.chapters?.[0]?.id || "");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "智能划分失败，请重试");
+    } finally {
+      setReparsing(false);
     }
   };
 
@@ -140,46 +202,37 @@ export default function DocumentPage() {
 
   const statusConfig = PARSE_STATUS_CONFIG[document.parseStatus as keyof typeof PARSE_STATUS_CONFIG];
   const StatusIcon = statusConfig.icon;
+  const currentChapter = document.chapters.find((chapter) => chapter.id === selectedChapter);
 
   return (
     <div className="min-h-screen bg-[#F7F1E8]">
-      {/* Header */}
-      <header className="bg-white/50 border-b border-amber-200/30 backdrop-blur-sm">
-        <div className="max-w-6xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                onClick={() => router.push("/")}
-                className="flex items-center gap-2"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                返回首页
-              </Button>
-              <div className="flex items-center gap-3">
-                <BookOpen className="w-6 h-6 text-blue-700" />
-                <h1 className="text-xl font-bold text-gray-800 truncate max-w-md">
-                  {document.title}
-                </h1>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Badge variant="secondary">
-                {INTENT_LABELS[document.intent as keyof typeof INTENT_LABELS]}
-              </Badge>
-              <Badge className={statusConfig.color}>
-                <StatusIcon className="w-3 h-3 mr-1" />
-                {statusConfig.label}
-              </Badge>
-            </div>
-          </div>
-        </div>
-      </header>
+      <AppHeader
+        extra={
+          <>
+            <Badge variant="secondary">
+              {INTENT_LABELS[document.intent as keyof typeof INTENT_LABELS]}
+            </Badge>
+            <Badge className={statusConfig.color}>
+              <StatusIcon className="w-3 h-3 mr-1" />
+              {statusConfig.label}
+            </Badge>
+            <Button variant="ghost" size="sm" onClick={() => router.push("/")}>
+              <ArrowLeft className="w-4 h-4" />
+              首页
+            </Button>
+          </>
+        }
+      />
 
-      <div className="max-w-6xl mx-auto px-6 py-8">
+      <div className="max-w-6xl mx-auto px-6 py-8 space-y-6">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-800">{document.title}</h2>
+          <p className="mt-1 text-sm text-gray-500">共 {document.pageCount} 页 · {document.chapters.length} 章</p>
+        </div>
+
+        <LlmBanner configured={llmConfigured} />
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Chapter List */}
           <div className="lg:col-span-1">
             <Card className="bg-white/70 backdrop-blur-sm border-amber-200/50 shadow-lg sticky top-4">
               <CardHeader>
@@ -188,12 +241,21 @@ export default function DocumentPage() {
                   <Badge variant="outline">{document.chapters.length} 章</Badge>
                 </CardTitle>
                 <CardDescription>
-                  共 {document.pageCount} 页
-                  {document.parseStatus === 'poor' && (
+                  {document.parseStatus === "poor" && (
                     <span className="text-orange-600 block mt-1">
-                      解析质量较低，建议手动调整页码范围
+                      规则解析较粗，可用大模型重新划分章节
                     </span>
                   )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="mt-3 w-full"
+                    disabled={reparsing || llmConfigured === false}
+                    onClick={() => void handleReparse()}
+                  >
+                    <Sparkles className="h-3.5 w-3.5" />
+                    {reparsing ? "正在智能划分…" : "用大模型划分章节"}
+                  </Button>
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-2 max-h-96 overflow-y-auto">
@@ -209,15 +271,20 @@ export default function DocumentPage() {
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex-1 min-w-0">
-                        <h4 className="font-medium text-sm text-gray-900 truncate">
-                          {chapter.title}
-                        </h4>
+                        <h4 className="font-medium text-sm text-gray-900 truncate">{chapter.title}</h4>
                         <div className="flex items-center gap-2 mt-1">
                           <span className="text-xs text-gray-500">
                             第 {chapter.pageStart}-{chapter.pageEnd} 页
                           </span>
-                          {chapter.source === 'manual' && (
-                            <Badge variant="outline" className="text-xs">手动</Badge>
+                          {chapter.source === "manual" && (
+                            <Badge variant="outline" className="text-xs">
+                              手动
+                            </Badge>
+                          )}
+                          {chapter.source === "llm" && (
+                            <Badge variant="outline" className="text-xs">
+                              大模型
+                            </Badge>
                           )}
                         </div>
                       </div>
@@ -239,67 +306,87 @@ export default function DocumentPage() {
             </Card>
           </div>
 
-          {/* Main Content Area */}
           <div className="lg:col-span-2">
             <Card className="bg-white/70 backdrop-blur-sm border-amber-200/50 shadow-lg min-h-96">
               <CardContent className="p-8">
-                {selectedChapter ? (
+                {currentChapter ? (
                   <div className="space-y-6">
-                    {(() => {
-                      const chapter = document.chapters.find(c => c.id === selectedChapter);
-                      return chapter ? (
-                        <div>
-                          <h2 className="text-2xl font-bold text-gray-800 mb-4">{chapter.title}</h2>
-                          <div className="flex items-center gap-4 mb-6 text-sm text-gray-600">
-                            <span>第 {chapter.pageStart}-{chapter.pageEnd} 页</span>
-                            <span>•</span>
-                            <span>共 {chapter.pageEnd - chapter.pageStart + 1} 页</span>
-                          </div>
-                          
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-                            {MENTORS.map((mentor) => (
-                              <Card
-                                key={mentor.id}
-                                className="bg-gradient-to-br from-white/80 to-gray-50/80 border-gray-200/50 hover:shadow-md hover:border-blue-300 transition-shadow cursor-pointer"
-                                onClick={() => setActiveMentor(mentor.id)}
-                              >
-                                <CardContent className="p-4 text-center">
-                                  <div className="text-2xl mb-2">{mentor.avatar}</div>
-                                  <h4 className="font-medium text-gray-800">{mentor.name}</h4>
-                                  <p className="text-xs text-gray-600">{mentor.description}</p>
-                                  <div className="mt-3">
-                                    <Button
-                                      size="sm"
-                                      className="w-full"
-                                      onClick={(event) => {
-                                        event.stopPropagation();
-                                        setActiveMentor(mentor.id);
-                                      }}
-                                    >
-                                      开始学习
-                                    </Button>
-                                  </div>
-                                </CardContent>
-                              </Card>
-                            ))}
-                          </div>
-                          
-                          <div className="bg-gray-50/50 rounded-lg p-6">
-                            <h3 className="font-medium text-gray-800 mb-3 flex items-center gap-2">
-                              <BookOpen className="w-4 h-4" />
-                              章节内容预览
-                            </h3>
-                            <div className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap max-h-48 overflow-y-auto">
-                              {chapter.text ? (
-                                chapter.text.substring(0, 500) + (chapter.text.length > 500 ? '...' : '')
-                              ) : (
-                                <span className="text-gray-500 italic">暂无内容预览</span>
-                              )}
-                            </div>
-                          </div>
+                    <div>
+                      <h2 className="text-2xl font-bold text-gray-800 mb-4">{currentChapter.title}</h2>
+                      <div className="flex items-center gap-4 mb-6 text-sm text-gray-600">
+                        <span>
+                          第 {currentChapter.pageStart}-{currentChapter.pageEnd} 页
+                        </span>
+                        <span>•</span>
+                        <span>共 {currentChapter.pageEnd - currentChapter.pageStart + 1} 页</span>
+                      </div>
+
+                      <ChapterInsight
+                        documentId={documentId}
+                        chapterId={currentChapter.id}
+                        summary={currentChapter.summary}
+                        keyPoints={currentChapter.keyPoints}
+                        questions={currentChapter.questions}
+                        llmConfigured={llmConfigured}
+                        onUpdated={(insight) => {
+                          setDocument((prev) =>
+                            prev
+                              ? {
+                                  ...prev,
+                                  chapters: prev.chapters.map((chapter) =>
+                                    chapter.id === currentChapter.id
+                                      ? { ...chapter, ...insight }
+                                      : chapter
+                                  ),
+                                }
+                              : prev
+                          );
+                        }}
+                      />
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 my-8">
+                        {MENTORS.map((mentor) => (
+                          <Card
+                            key={mentor.id}
+                            className="bg-gradient-to-br from-white/80 to-gray-50/80 border-gray-200/50 hover:shadow-md hover:border-blue-300 transition-shadow cursor-pointer"
+                            onClick={() => setActiveMentor(mentor.id)}
+                          >
+                            <CardContent className="p-4 text-center">
+                              <div className="text-2xl mb-2">{mentor.avatar}</div>
+                              <h4 className="font-medium text-gray-800">{mentor.name}</h4>
+                              <p className="text-xs text-gray-600">{mentor.description}</p>
+                              <div className="mt-3">
+                                <Button
+                                  size="sm"
+                                  className="w-full"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    setActiveMentor(mentor.id);
+                                  }}
+                                >
+                                  开始学习
+                                </Button>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </div>
+
+                      <div className="bg-gray-50/50 rounded-lg p-6">
+                        <h3 className="font-medium text-gray-800 mb-3 flex items-center gap-2">
+                          <BookOpen className="w-4 h-4" />
+                          章节内容预览
+                        </h3>
+                        <div className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap max-h-48 overflow-y-auto">
+                          {currentChapter.text ? (
+                            currentChapter.text.substring(0, 500) +
+                            (currentChapter.text.length > 500 ? "..." : "")
+                          ) : (
+                            <span className="text-gray-500 italic">暂无内容预览</span>
+                          )}
                         </div>
-                      ) : null;
-                    })()}
+                      </div>
+                    </div>
                   </div>
                 ) : (
                   <div className="text-center py-12">
@@ -315,24 +402,23 @@ export default function DocumentPage() {
       </div>
 
       <StudyChat
+        key={`${selectedChapter}-${activeMentor}`}
         open={!!activeMentor}
         onOpenChange={(open) => {
           if (!open) setActiveMentor("");
         }}
         documentId={documentId}
         chapterId={selectedChapter}
-        chapterTitle={document.chapters.find((chapter) => chapter.id === selectedChapter)?.title ?? ""}
+        chapterTitle={currentChapter?.title ?? ""}
         mentorId={activeMentor}
+        llmConfigured={llmConfigured}
       />
 
-      {/* Edit Chapter Dialog */}
       <Dialog open={!!editingChapter} onOpenChange={(open) => !open && setEditingChapter(null)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>编辑章节</DialogTitle>
-            <DialogDescription>
-              修改章节标题和页码范围
-            </DialogDescription>
+            <DialogDescription>修改章节标题和页码范围</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div>
@@ -370,9 +456,7 @@ export default function DocumentPage() {
             <Button variant="outline" onClick={() => setEditingChapter(null)}>
               取消
             </Button>
-            <Button onClick={handleSaveChapter}>
-              保存修改
-            </Button>
+            <Button onClick={handleSaveChapter}>保存修改</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
