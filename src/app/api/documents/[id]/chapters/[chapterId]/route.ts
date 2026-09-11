@@ -3,10 +3,10 @@ import { prisma } from '@/lib/prisma';
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string; chapterId: string } }
+  { params }: { params: Promise<{ id: string; chapterId: string }> }
 ) {
   try {
-    const { id: documentId, chapterId } = params;
+    const { id: documentId, chapterId } = await params;
     const { title, pageStart, pageEnd } = await request.json();
 
     // Validate input

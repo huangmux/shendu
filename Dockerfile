@@ -42,8 +42,6 @@ COPY --from=builder /app/prisma7.config.ts ./prisma7.config.ts
 COPY --from=builder /app/package.json ./package.json
 
 # Copy Prisma client
-COPY --from=builder /app/src/generated ./src/generated
-
 # Create uploads directory
 RUN mkdir -p uploads data
 RUN chown -R nextjs:nodejs uploads data

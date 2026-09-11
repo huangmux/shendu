@@ -15,6 +15,7 @@ interface Chapter {
   title: string;
   pageStart: number;
   pageEnd: number;
+  text?: string | null;
   source: string;
 }
 
