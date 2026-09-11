@@ -23,9 +23,9 @@ export function isLlmEnabled() {
   return getLlmConfig() !== null;
 }
 
-export async function chatWithLlm(
-  messages: Array<{ role: "system" | "user" | "assistant"; content: string }>
-) {
+type LlmMessage = { role: "system" | "user" | "assistant"; content: string };
+
+export async function chatWithLlm(messages: LlmMessage[]) {
   const config = getLlmConfig();
   if (!config) {
     throw new Error("未配置 LLM_API_KEY");
@@ -64,4 +64,39 @@ export async function chatWithLlm(
     throw new Error("大模型没有返回正文");
   }
   return content;
+}
+
+// Opens a streaming (SSE) chat completion against the OpenAI-compatible
+// endpoint and returns the raw upstream response once its status is verified.
+// Throwing here (before any bytes are streamed to the browser) lets the route
+// handler surface a real HTTP error instead of a broken 200 stream.
+export async function openLlmStream(messages: LlmMessage[]): Promise<Response> {
+  const config = getLlmConfig();
+  if (!config) {
+    throw new Error("未配置 LLM_API_KEY");
+  }
+
+  const response = await fetch(`${config.baseUrl}/chat/completions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${config.apiKey}`,
+    },
+    body: JSON.stringify({
+      model: config.model,
+      messages,
+      temperature: 0.7,
+      stream: true,
+    }),
+    signal: AbortSignal.timeout(120_000),
+  });
+
+  if (!response.ok) {
+    const raw = await response.text();
+    throw new Error(`大模型接口 ${response.status}: ${raw.slice(0, 240)}`);
+  }
+  if (!response.body) {
+    throw new Error("大模型接口没有返回数据流");
+  }
+  return response;
 }
