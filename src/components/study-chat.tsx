@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -137,7 +138,14 @@ export function StudyChat({
             {source === "llm"
               ? " · 大模型陪学"
               : source === "local"
-                ? " · 未配置大模型，当前为本地引导"
+                ? (
+                  <>
+                    {" · 未配置大模型，当前为本地引导 · "}
+                    <Link href="/settings" className="underline underline-offset-2">
+                      去设置
+                    </Link>
+                  </>
+                )
                 : ""}
           </DialogDescription>
         </DialogHeader>
