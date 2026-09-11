@@ -7,7 +7,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ArrowLeft, BookOpen, Edit3, CheckCircle, AlertCircle, XCircle, User } from "lucide-react";
+import { ArrowLeft, BookOpen, Edit3, CheckCircle, AlertCircle, XCircle } from "lucide-react";
+import { MENTORS, type MentorId } from "@/lib/mentors";
+import { StudyChat } from "@/components/study-chat";
 
 interface Chapter {
   id: string;
@@ -53,6 +55,7 @@ export default function DocumentPage() {
   const [error, setError] = useState<string>("");
   const [editingChapter, setEditingChapter] = useState<Chapter | null>(null);
   const [editForm, setEditForm] = useState({ title: "", pageStart: "", pageEnd: "" });
+  const [activeMentor, setActiveMentor] = useState<MentorId | "">("");
 
   useEffect(() => {
     fetchDocument();
@@ -67,6 +70,7 @@ export default function DocumentPage() {
       }
       const doc = await response.json();
       setDocument(doc);
+      setSelectedChapter((prev) => prev || doc.chapters?.[0]?.id || "");
     } catch (err) {
       setError(err instanceof Error ? err.message : "加载失败");
     } finally {
@@ -252,20 +256,28 @@ export default function DocumentPage() {
                             <span>共 {chapter.pageEnd - chapter.pageStart + 1} 页</span>
                           </div>
                           
-                          {/* Mentor Cards Placeholder */}
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-                            {[
-                              { name: "苏格拉底", description: "哲学思辨导师", avatar: "🧙‍♂️" },
-                              { name: "费曼", description: "科学启蒙导师", avatar: "🔬" },
-                              { name: "诸葛亮", description: "战略智慧导师", avatar: "📜" }
-                            ].map((mentor) => (
-                              <Card key={mentor.name} className="bg-gradient-to-br from-white/80 to-gray-50/80 border-gray-200/50 hover:shadow-md transition-shadow cursor-not-allowed opacity-60">
+                            {MENTORS.map((mentor) => (
+                              <Card
+                                key={mentor.id}
+                                className="bg-gradient-to-br from-white/80 to-gray-50/80 border-gray-200/50 hover:shadow-md hover:border-blue-300 transition-shadow cursor-pointer"
+                                onClick={() => setActiveMentor(mentor.id)}
+                              >
                                 <CardContent className="p-4 text-center">
                                   <div className="text-2xl mb-2">{mentor.avatar}</div>
                                   <h4 className="font-medium text-gray-800">{mentor.name}</h4>
                                   <p className="text-xs text-gray-600">{mentor.description}</p>
                                   <div className="mt-3">
-                                    <Badge variant="outline" className="text-xs">即将上线</Badge>
+                                    <Button
+                                      size="sm"
+                                      className="w-full"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        setActiveMentor(mentor.id);
+                                      }}
+                                    >
+                                      开始学习
+                                    </Button>
                                   </div>
                                 </CardContent>
                               </Card>
@@ -301,6 +313,17 @@ export default function DocumentPage() {
           </div>
         </div>
       </div>
+
+      <StudyChat
+        open={!!activeMentor}
+        onOpenChange={(open) => {
+          if (!open) setActiveMentor("");
+        }}
+        documentId={documentId}
+        chapterId={selectedChapter}
+        chapterTitle={document.chapters.find((chapter) => chapter.id === selectedChapter)?.title ?? ""}
+        mentorId={activeMentor}
+      />
 
       {/* Edit Chapter Dialog */}
       <Dialog open={!!editingChapter} onOpenChange={(open) => !open && setEditingChapter(null)}>

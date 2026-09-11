@@ -3,7 +3,7 @@ import { writeFile } from 'fs/promises';
 import { join } from 'path';
 import { randomUUID } from 'crypto';
 import { prisma } from '@/lib/prisma';
-import { extractText } from 'unpdf';
+import { extractText, getDocumentProxy } from 'unpdf';
 
 // Helper function to generate client ID from cookies or create new one
 function getClientId(request: NextRequest): string {
@@ -12,10 +12,15 @@ function getClientId(request: NextRequest): string {
 }
 
 // Helper function to parse PDF chapters
-async function parseChapters(pdfBuffer: Buffer, title: string) {
+async function parseChapters(pdfBytes: Uint8Array, title: string) {
   try {
-    // Extract text and metadata from PDF
-    const { text, totalPages } = await extractText(pdfBuffer, { mergePages: true });
+    // unpdf/pdf.js rejects Node Buffer; pass a plain Uint8Array
+    const pdf = await getDocumentProxy(pdfBytes);
+    const extracted = await extractText(pdf, { mergePages: true });
+    const totalPages = extracted.totalPages;
+    const text = Array.isArray(extracted.text)
+      ? extracted.text.join('\n')
+      : extracted.text;
     
     const chapters: Array<{
       index: number;
@@ -121,17 +126,16 @@ export async function POST(request: NextRequest) {
     const fileName = `${randomUUID()}.pdf`;
     const filePath = join(process.cwd(), 'uploads', fileName);
     
-    // Save file
-    const bytes = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
-    await writeFile(filePath, buffer);
+    // Save file. Copy into a plain Uint8Array — Node Buffer is rejected by unpdf.
+    const pdfBytes = new Uint8Array(await file.arrayBuffer());
+    await writeFile(filePath, pdfBytes);
     
     // Get or create client ID
     const clientId = getClientId(request);
     
     // Parse PDF and extract chapters
     const title = file.name.replace(/\.pdf$/i, '');
-    const { chapters, totalPages, parseStatus } = await parseChapters(buffer, title);
+    const { chapters, totalPages, parseStatus } = await parseChapters(pdfBytes, title);
     
     // Create document record
     const document = await prisma.document.create({
