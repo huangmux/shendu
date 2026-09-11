@@ -1,0 +1,41 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Document {
+  id          String       @id @default(cuid())
+  title       String
+  filePath    String
+  pageCount   Int
+  intent      String       // academic, work, interest
+  parseStatus String       @default("pending") // pending, ok, poor, failed
+  clientId    String
+  createdAt   DateTime     @default(now())
+  chapters    Chapter[]
+
+  @@map("documents")
+}
+
+model Chapter {
+  id         String   @id @default(cuid())
+  documentId String
+  index      Int
+  title      String
+  pageStart  Int
+  pageEnd    Int
+  text       String?
+  source     String   @default("auto") // auto, manual
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@map("chapters")
+}
