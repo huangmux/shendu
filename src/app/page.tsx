@@ -1,41 +1,49 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Upload, BookOpen, FileText, Heart } from "lucide-react";
+import { AppHeader } from "@/components/app-header";
+import { LlmBanner } from "@/components/llm-banner";
 
 const INTENT_OPTIONS = [
-  { 
-    id: "academic", 
-    label: "教材", 
-    description: "学术论文、教材、研究资料", 
-    icon: BookOpen, 
-    color: "bg-blue-100 text-blue-800 border-blue-200 hover:bg-blue-200" 
+  {
+    id: "academic",
+    label: "教材",
+    description: "学术论文、教材、研究资料",
+    icon: BookOpen,
+    color: "bg-blue-100 text-blue-800 border-blue-200 hover:bg-blue-200",
   },
-  { 
-    id: "work", 
-    label: "工作材料", 
-    description: "报告、手册、技术文档", 
-    icon: FileText, 
-    color: "bg-green-100 text-green-800 border-green-200 hover:bg-green-200" 
+  {
+    id: "work",
+    label: "工作材料",
+    description: "报告、手册、技术文档",
+    icon: FileText,
+    color: "bg-green-100 text-green-800 border-green-200 hover:bg-green-200",
   },
-  { 
-    id: "interest", 
-    label: "兴趣读物", 
-    description: "小说、随笔、自传", 
-    icon: Heart, 
-    color: "bg-rose-100 text-rose-800 border-rose-200 hover:bg-rose-200" 
-  }
+  {
+    id: "interest",
+    label: "兴趣读物",
+    description: "小说、随笔、自传",
+    icon: Heart,
+    color: "bg-rose-100 text-rose-800 border-rose-200 hover:bg-rose-200",
+  },
 ];
 
 export default function Home() {
   const [selectedIntent, setSelectedIntent] = useState<string>("");
   const [uploading, setUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
+  const [llmConfigured, setLlmConfigured] = useState<boolean | null>(null);
   const router = useRouter();
+
+  useEffect(() => {
+    fetch("/api/health")
+      .then((response) => response.json())
+      .then((data) => setLlmConfigured(Boolean(data.llm?.configured)))
+      .catch(() => setLlmConfigured(null));
+  }, []);
 
   const handleFileUpload = async (file: File) => {
     if (!file || !selectedIntent) {
@@ -97,22 +105,18 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-[#F7F1E8] flex flex-col">
-      <header className="bg-white/50 border-b border-amber-200/30 backdrop-blur-sm">
-        <div className="max-w-4xl mx-auto px-6 py-4">
-          <div className="flex items-center gap-3">
-            <BookOpen className="w-8 h-8 text-blue-700" />
-            <h1 className="text-2xl font-bold text-gray-800">深读</h1>
-            <Badge variant="secondary" className="text-xs">Beta</Badge>
-          </div>
-        </div>
-      </header>
+      <AppHeader />
 
       <main className="flex-1 flex items-center justify-center px-6 py-12">
         <div className="w-full max-w-2xl space-y-8">
           <div className="text-center space-y-4">
             <h2 className="text-4xl font-bold text-gray-800 mb-2">深度阅读，智慧启迪</h2>
-            <p className="text-lg text-gray-600">上传PDF文档，获得章节化的深度阅读体验</p>
+            <p className="text-lg text-gray-600">
+              上传 PDF，由大模型生成导读，并与苏格拉底、费曼、诸葛亮一起精读每一章
+            </p>
           </div>
+
+          <LlmBanner configured={llmConfigured} />
 
           <Card className="bg-white/70 backdrop-blur-sm border-amber-200/50 shadow-lg">
             <CardHeader>
@@ -182,9 +186,7 @@ export default function Home() {
                 <p className="text-lg font-medium text-gray-700 mb-2">
                   {uploading ? "正在上传..." : "点击或拖拽PDF文件到此处"}
                 </p>
-                <p className="text-sm text-gray-500">
-                  支持最大 10MB 的PDF文件
-                </p>
+                <p className="text-sm text-gray-500">支持最大 10MB 的PDF文件</p>
                 {!selectedIntent && (
                   <p className="text-sm text-red-500 mt-2">请先选择阅读类型</p>
                 )}

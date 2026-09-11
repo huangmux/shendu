@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -19,7 +20,53 @@ type StudyChatProps = {
   chapterId: string;
   chapterTitle: string;
   mentorId: MentorId | "";
+  llmConfigured: boolean | null;
 };
+
+async function readMentorStream(
+  response: Response,
+  onDelta: (content: string) => void
+) {
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.includes("text/event-stream")) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.message || "导师没有回应");
+  }
+  if (!response.body) {
+    throw new Error("导师没有回应");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let content = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const chunks = buffer.split("\n\n");
+    buffer = chunks.pop() ?? "";
+
+    for (const chunk of chunks) {
+      const line = chunk.trim();
+      if (!line.startsWith("data:")) continue;
+      const data = line.slice(5).trim();
+      if (!data || data === "[DONE]") continue;
+      const json = JSON.parse(data) as { delta?: string; error?: string };
+      if (json.error) throw new Error(json.error);
+      if (json.delta) {
+        content += json.delta;
+        onDelta(content);
+      }
+    }
+  }
+
+  if (!content.trim()) {
+    throw new Error("大模型没有返回正文");
+  }
+  return content;
+}
 
 export function StudyChat({
   open,
@@ -28,24 +75,20 @@ export function StudyChat({
   chapterId,
   chapterTitle,
   mentorId,
+  llmConfigured,
 }: StudyChatProps) {
   const mentor = mentorId ? getMentor(mentorId) : undefined;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(open && llmConfigured !== false);
   const [error, setError] = useState("");
-  const [source, setSource] = useState<"llm" | "local" | "">("");
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!open || !mentorId || !chapterId) return;
+    if (llmConfigured === false) return;
 
     let cancelled = false;
-    setMessages([]);
-    setInput("");
-    setError("");
-    setSource("");
-    setLoading(true);
 
     fetch(`/api/documents/${documentId}/learn`, {
       method: "POST",
@@ -53,11 +96,13 @@ export function StudyChat({
       body: JSON.stringify({ chapterId, mentorId, messages: [] }),
     })
       .then(async (response) => {
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.message || "开始学习失败");
+        const content = await readMentorStream(response, (next) => {
+          if (!cancelled) {
+            setMessages([{ role: "assistant", content: next }]);
+          }
+        });
         if (!cancelled) {
-          setSource(data.source === "llm" ? "llm" : "local");
-          setMessages([{ role: "assistant", content: data.content }]);
+          setMessages([{ role: "assistant", content }]);
         }
       })
       .catch((err) => {
@@ -70,7 +115,7 @@ export function StudyChat({
     return () => {
       cancelled = true;
     };
-  }, [open, documentId, chapterId, mentorId]);
+  }, [open, documentId, chapterId, mentorId, llmConfigured]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -92,10 +137,10 @@ export function StudyChat({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ chapterId, mentorId, messages: nextMessages }),
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.message || "导师没有回应");
-      setSource(data.source === "llm" ? "llm" : "local");
-      setMessages([...nextMessages, { role: "assistant", content: data.content }]);
+      const reply = await readMentorStream(response, (next) => {
+        setMessages([...nextMessages, { role: "assistant", content: next }]);
+      });
+      setMessages([...nextMessages, { role: "assistant", content: reply }]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "发送失败");
     } finally {
@@ -113,15 +158,20 @@ export function StudyChat({
           </DialogTitle>
           <DialogDescription>
             当前章节：{chapterTitle || "未选择章节"}
-            {source === "llm"
-              ? " · 大模型陪学"
-              : source === "local"
-                ? " · 未配置大模型，当前为本地引导"
-                : ""}
+            {llmConfigured ? " · 大模型陪学" : ""}
           </DialogDescription>
         </DialogHeader>
 
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto rounded-lg bg-[#F7F1E8]/70 p-3">
+          {llmConfigured === false && (
+            <p className="text-sm text-orange-800">
+              导师陪学需要先接入大模型。请到
+              <Link href="/settings" className="mx-1 underline">
+                模型设置
+              </Link>
+              填写兼容 OpenAI 的接口。
+            </p>
+          )}
           {messages.map((message, index) => (
             <div
               key={`${message.role}-${index}`}
@@ -141,7 +191,19 @@ export function StudyChat({
           {loading && (
             <p className="text-sm text-gray-500">{mentor?.name}正在思考…</p>
           )}
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && (
+            <p className="text-sm text-red-600">
+              {error}
+              {error.includes("尚未配置") && (
+                <>
+                  {" "}
+                  <Link href="/settings" className="underline">
+                    去配置
+                  </Link>
+                </>
+              )}
+            </p>
+          )}
           <div ref={bottomRef} />
         </div>
 
@@ -151,6 +213,7 @@ export function StudyChat({
             onChange={(event) => setInput(event.target.value)}
             placeholder="写下你的理解，按 Enter 发送"
             className="min-h-16 bg-white"
+            disabled={llmConfigured === false}
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.shiftKey) {
                 event.preventDefault();
@@ -158,7 +221,7 @@ export function StudyChat({
               }
             }}
           />
-          <Button onClick={() => void send()} disabled={loading || !input.trim()}>
+          <Button onClick={() => void send()} disabled={loading || !input.trim() || llmConfigured === false}>
             发送
           </Button>
         </div>
