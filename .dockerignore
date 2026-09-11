@@ -1,0 +1,52 @@
+# Dependencies
+node_modules
+npm-debug.log*
+
+# Next.js
+.next/
+out/
+
+# Production builds
+build
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Database
+*.db
+*.db-journal
+dev.db
+
+# Uploads (will be mounted as volume)
+uploads/*
+
+# Git
+.git
+.gitignore
+
+# Testing
+coverage
+*.lcov
+
+# Misc
+.DS_Store
+*.pem
+.vscode
+.idea
+
+# Logs
+*.log
+logs
+
+# Python
+__pycache__
+*.pyc
+test-sample.py
+
+# Temporary files
+*.tmp
+*.temp
