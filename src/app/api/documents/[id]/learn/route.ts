@@ -127,7 +127,7 @@ export async function POST(
       messages,
     };
 
-    if (isLlmEnabled()) {
+    if (await isLlmEnabled()) {
       let upstream: Response;
       try {
         upstream = await openLlmStream(buildMentorMessages(payload));
